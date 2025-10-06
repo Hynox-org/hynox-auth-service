@@ -13,7 +13,7 @@ function generateProfilePic(fullName) {
 }
 
 const userSchema = new mongoose.Schema({
-  userId: { type: String, required: true, unique: true },
+  userId: { type: String, unique: true },
   fullName: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true },

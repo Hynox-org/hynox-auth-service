@@ -13,20 +13,21 @@ const supabase = createClient(
 // ----------------- Signup -----------------
 router.post("/signup", async (req, res) => {
   try {
-    const { fullName, email, password, countryCode, phoneNumber, role = "employee" } = req.body;
+    console.log(req.body);
+    const { fullName, email, password, countryCode, phoneNumber, role = "super_admin" } = req.body;
 
     if (!fullName || !email || !password || !phoneNumber) {
       return res.status(400).json({ message: "All required fields must be provided" });
     }
 
     // 1️⃣ Sign up user in Supabase
-    const { data: supabaseData, error: supabaseError } = await supabase.auth.admin.createUser({
+    const { data: supabaseData, error: supabaseError } = await supabase.auth.signUp({
       email,
       password,
       user_metadata: { role }, // store role in Supabase
     });
 
-    if (supabaseError) return res.status(400).json({ error: supabaseError.message });
+    if (supabaseError) return res.status(400).json({ supererror: supabaseError.message });
 
     const userId = supabaseData.id;
 
