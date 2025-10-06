@@ -6,6 +6,7 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const authRoutes = require("./routes/authRoutes");
+const orgRoutes = require("./routes/orgRoutes"); 
 
 const app = express();
 app.use(express.json());
@@ -28,6 +29,7 @@ mongoose
 
 // ------------------- ROUTES -------------------
 app.use("/api/auth", authRoutes);
+app.use("/api/org", orgRoutes);
 
 // ------------------- DEFAULT ROUTE -------------------
 app.get("/", (req, res) => {
