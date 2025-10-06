@@ -13,7 +13,7 @@ function generateProfilePic(fullName) {
 }
 
 const userSchema = new mongoose.Schema({
-  userId: { type: String, unique: true },
+  userId: { type: String, required: true, unique: true },
   fullName: { type: String, required: true, trim: true },
   email: { type: String, required: true, unique: true, lowercase: true },
   password: { type: String, required: true },
@@ -33,4 +33,4 @@ const userSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("Profile", userSchema, "profile");
+module.exports = mongoose.model("Profile", userSchema);

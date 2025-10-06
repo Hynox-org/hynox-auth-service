@@ -6,11 +6,19 @@ const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
 const supabaseAuth = require("../middleware/supabaseAuth"); // import middleware
 
+const { createClient } = require("@supabase/supabase-js");
+
+// ✅ Use environment variables for security
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_KEY; // Must be the service role key, not anon key
+
+// ✅ Initialize Supabase client
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // ----------------- Setup Org for Super Admin -----------------
 router.post("/setup", supabaseAuth, async (req, res) => {
   try {
     const { userId, orgName } = req.body;
-
+    console.log("🔑 Supabase user ID:", req.user.userId);
     // Only allow the authenticated user to setup their org
     if (req.user.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -39,22 +47,27 @@ router.post("/assign-user", supabaseAuth, async (req, res) => {
   try {
     const { fullName, email, password, countryCode, phoneNumber, role, orgId } = req.body;
 
+    // Ensure only super_admin can assign
     const superAdmin = await Profile.findOne({ userId: req.user.id });
-    if (!superAdmin || superAdmin.role !== "super_admin") 
+    if (!superAdmin || superAdmin.role !== "super_admin")
       return res.status(403).json({ error: "Only super_admin can assign users" });
 
-    // 1️⃣ Create user in Supabase with role
+    // ✅ Create user in Supabase (using service role key)
     const { data: supabaseData, error: supabaseError } = await supabase.auth.admin.createUser({
       email,
       password,
-    //   email_confirm: true,
       user_metadata: { role },
     });
 
-    if (supabaseError) return res.status(400).json({ error: supabaseError.message });
-    const userId = supabaseData.id;
+    console.log("Supabase user creation response:", supabaseData, supabaseError);
 
-    // 2️⃣ Hash password and store in MongoDB
+    if (supabaseError) return res.status(400).json({ supabaseError: supabaseError.message });
+
+    // ✅ Fix: Get correct user ID from response
+    const userId = supabaseData.user?.id;
+    if (!userId) return res.status(400).json({ error: "User ID missing from Supabase response" });
+
+    // ✅ Hash password and save user in MongoDB
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new Profile({
       userId,
@@ -63,21 +76,24 @@ router.post("/assign-user", supabaseAuth, async (req, res) => {
       password: hashedPassword,
       countryCode,
       phone: phoneNumber,
-      role,
+      role, // make sure role matches enum in schema
       orgId,
     });
     await newUser.save();
 
-    // 3️⃣ Link user to org
+    // ✅ Link user to org
     const org = await Organization.findOne({ orgId });
+    if (!org) return res.status(404).json({ error: "Organization not found" });
     org.employees.push(newUser._id);
     await org.save();
 
     res.status(201).json({ message: "User created and assigned to org", user: newUser });
   } catch (err) {
+    console.error("❌ Assign user failed:", err);
     res.status(500).json({ error: "Creating user failed", details: err.message });
   }
 });
+
 
 // ----------------- Edit Organization Details (Super Admin Only) -----------------
 router.put("/:orgId", supabaseAuth, async (req, res) => {

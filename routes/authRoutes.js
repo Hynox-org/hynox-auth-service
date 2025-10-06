@@ -7,48 +7,59 @@ const bcrypt = require("bcrypt");
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  process.env.SUPABASE_SERVICE_KEY
 );
 
 // ----------------- Signup -----------------
 router.post("/signup", async (req, res) => {
   try {
-    console.log(req.body);
     const { fullName, email, password, countryCode, phoneNumber, role = "super_admin" } = req.body;
 
-    if (!fullName || !email || !password || !phoneNumber) {
+    if (!fullName || !email || !password ) {
       return res.status(400).json({ message: "All required fields must be provided" });
     }
 
-    // 1️⃣ Sign up user in Supabase
+    // 1️⃣ Create user in Supabase
     const { data: supabaseData, error: supabaseError } = await supabase.auth.signUp({
       email,
       password,
-      user_metadata: { role }, // store role in Supabase
+      options: {
+        data: { role }, // store role as metadata
+      },
     });
 
-    if (supabaseError) return res.status(400).json({ supererror: supabaseError.message });
+    if (supabaseError) {
+      return res.status(400).json({ supabaseError: supabaseError.message });
+    }
 
-    const userId = supabaseData.id;
+    // ✅ Get the correct Supabase user ID
+    const supabaseUserId = supabaseData.user?.id;
+    if (!supabaseUserId || supabaseUserId === "") {
+      return res.status(400).json({ error: "Failed to retrieve Supabase user ID" });
+    }
 
-    // 2️⃣ Hash password before storing in MongoDB
+    // 2️⃣ Hash password before saving in MongoDB
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 3️⃣ Create user in MongoDB
+    // 3️⃣ Store user in MongoDB
     const newUser = new User({
-      userId,
+      userId: supabaseUserId, // ✅ Store Supabase user ID here
       fullName,
       email,
       password: hashedPassword,
       countryCode,
       phone: phoneNumber,
-      role, // store role in MongoDB as well
+      role,
     });
 
     await newUser.save();
 
-    res.status(201).json({ message: "User registered successfully", user: newUser });
+    res.status(201).json({
+      message: "User registered successfully",
+      user: newUser,
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Signup failed", details: err.message });
   }
 });
@@ -61,24 +72,44 @@ router.post("/login", async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
 
-    // Login through Supabase
+    // 1️⃣ Log in via Supabase
     const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-    if (supabaseError) return res.status(400).json({ error: supabaseError.message });
 
-    const userId = supabaseData.user.id;
+    // console.log("Supabase login response:", supabaseData, supabaseError);
 
-    // Fetch user details from MongoDB
-    const user = await User.findOne({ userId });
-    if (!user) return res.status(404).json({ message: "User not found in DB" });
+    if (supabaseError)
+      return res.status(400).json({ supabaseError: supabaseError.message });
 
-    res.json({ message: "Login successful", user, session: supabaseData.session });
+    // ✅ Check if Supabase returned a user
+    const supabaseUserId = supabaseData?.user?.id || supabaseData?.session?.user?.id;
+    // console.log("Supabase user ID:", supabaseUserId);
+    if (!supabaseUserId || supabaseUserId === "") {
+      return res.status(400).json({ message: "Login failed — no user ID returned from Supabase" });
+    }
+
+    // 2️⃣ Fetch corresponding MongoDB profile
+    const user = await User.findOne({ userId: supabaseUserId });
+    console.log("Fetched user from MongoDB:", user);
+    if (user=="" || user==null)
+      return res.status(404).json({ message: "User not fetched" });
+
+    if (!user)
+      return res.status(404).json({ message: "User not found in MongoDB" });
+
+    res.json({
+      message: "Login successful",
+      user,
+      session: supabaseData.session,
+    });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Login failed", details: err.message });
   }
 });
+
 
 // ----------------- Update Profile -----------------
 router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
@@ -86,7 +117,8 @@ router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
     const { userId } = req.params;
 
     // Only allow the authenticated user to update their profile
-    if (req.user.id !== userId) {
+    if (req.user.userId !== userId) {
+      console.log("🔑 Supabase user ID:", req.user.id);
       return res.status(403).json({ error: "Access denied" });
     }
 
