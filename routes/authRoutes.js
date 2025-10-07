@@ -118,7 +118,6 @@ router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
 
     // Only allow the authenticated user to update their profile
     if (req.user.userId !== userId) {
-      console.log("🔑 Supabase user ID:", req.user.id);
       return res.status(403).json({ error: "Access denied" });
     }
 
@@ -135,7 +134,7 @@ router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
     if (country) user.country = country;
     if (state) user.state = state;
     if (language) user.language = language;
-    if (profilePicUrl) user.profilePic.url = profilePicUrl;
+    if (profilePicUrl) user.profilePic = { ...user.profilePic, url: profilePicUrl };
 
     await user.save();
 
