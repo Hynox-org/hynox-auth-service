@@ -32,7 +32,7 @@ module.exports = async (req, res, next) => {
 
     // ✅ Attach both Supabase + Mongo user data to the request
     req.user = {
-      userId: userId,             // 🔥 now available directly as req.user.userId
+      userId: userId,             //  now available directly as req.user.userId
       email: data.user.email,
       role: user.role,
       mongoProfile: user,         // keep full MongoDB user doc if needed

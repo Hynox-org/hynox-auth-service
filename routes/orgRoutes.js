@@ -4,21 +4,21 @@ const Organization = require("../models/Organization");
 const Profile = require("../models/Profile");
 const { v4: uuidv4 } = require("uuid");
 const bcrypt = require("bcrypt");
-const supabaseAuth = require("../middleware/supabaseAuth"); // import middleware
-
+const supabaseAuth = require("../middleware/supabaseAuth");
 const { createClient } = require("@supabase/supabase-js");
 
-// ✅ Use environment variables for security
+//  Use environment variables for security
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_KEY; // Must be the service role key, not anon key
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-// ✅ Initialize Supabase client
+//  Initialize Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
 // ----------------- Setup Org for Super Admin -----------------
 router.post("/setup", supabaseAuth, async (req, res) => {
   try {
     const { userId, orgName } = req.body;
-    console.log("🔑 Supabase user ID:", req.user.userId);
+
     // Only allow the authenticated user to setup their org
     if (req.user.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -35,9 +35,10 @@ router.post("/setup", supabaseAuth, async (req, res) => {
     );
 
     if (!updatedUser) return res.status(404).json({ error: "User not found" });
-
-    res.status(201).json({ message: "Organization created and linked", organization: newOrg, user: updatedUser });
-  } catch (err) {
+    
+    res.status(201).json({ message: "Organization created and linked", organization: orgId, user: userId });
+  } 
+  catch (err) {
     res.status(500).json({ error: "Organization setup failed", details: err.message });
   }
 });
@@ -52,51 +53,55 @@ router.post("/assign-user", supabaseAuth, async (req, res) => {
     if (!superAdmin || superAdmin.role !== "super_admin")
       return res.status(403).json({ error: "Only super_admin can assign users" });
 
-    // ✅ Create user in Supabase (using service role key)
+    // Validate role
+    const validRoles = ["employee", "manager", "super_admin"];
+    if (!validRoles.includes(role))
+      return res.status(400).json({ error: "Invalid role provided" });
+
+    // Create user in Supabase
     const { data: supabaseData, error: supabaseError } = await supabase.auth.admin.createUser({
       email,
       password,
       user_metadata: { role },
     });
 
-    console.log("Supabase user creation response:", supabaseData, supabaseError);
+    if (supabaseError)
+      return res.status(400).json({ supabaseError: supabaseError.message });
 
-    if (supabaseError) return res.status(400).json({ supabaseError: supabaseError.message });
-
-    // ✅ Fix: Get correct user ID from response
     const userId = supabaseData.user?.id;
-    if (!userId) return res.status(400).json({ error: "User ID missing from Supabase response" });
+    if (!userId)
+      return res.status(400).json({ error: "User ID missing from Supabase response" });
 
-    // ✅ Hash password and save user in MongoDB
+    // Hash password and save in MongoDB
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new Profile({
-      userId,
-      fullName,
-      email,
+      userId, fullName, email,
       password: hashedPassword,
-      countryCode,
-      phone: phoneNumber,
-      role, // make sure role matches enum in schema
-      orgId,
+      countryCode, phone: phoneNumber,
+      role, orgId,
     });
     await newUser.save();
 
-    // ✅ Link user to org
+    // Link user to org using Supabase userId (string)
     const org = await Organization.findOne({ orgId });
     if (!org) return res.status(404).json({ error: "Organization not found" });
-    org.employees.push(newUser._id);
+
+    org.employees.push(userId); // ✅ store Supabase UUID
     await org.save();
 
-    res.status(201).json({ message: "User created and assigned to org", user: newUser });
+    res.status(201).json({
+      message: "User created and assigned to organization successfully",
+      user: userId,
+      organization: orgId,
+    });
   } catch (err) {
     console.error("❌ Assign user failed:", err);
     res.status(500).json({ error: "Creating user failed", details: err.message });
   }
 });
 
-
 // ----------------- Edit Organization Details (Super Admin Only) -----------------
-router.put("/:orgId", supabaseAuth, async (req, res) => {
+router.put("/:orgId", supabaseAuth, async (req, res) => { //supabaseAuth(["super_admin" , " admin "])
   try {
     const { orgId } = req.params;
     const { orgName, roles } = req.body;
@@ -112,7 +117,7 @@ router.put("/:orgId", supabaseAuth, async (req, res) => {
     if (roles && roles.length) org.roles = roles;
 
     await org.save();
-    res.status(200).json({ message: "Organization updated successfully", organization: org });
+    res.status(200).json({ message: "Organization updated successfully", organization: orgId });
   } catch (err) {
     res.status(500).json({ error: "Updating organization failed", details: err.message });
   }
@@ -127,7 +132,14 @@ router.get("/:orgId", async (req, res) => {
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
     const users = await Profile.find({ orgId });
-    res.status(200).json({ organization: org, users });
+res.status(200).json({
+  organization: org.orgName,
+  users: users.map((user) => ({
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role,
+  })),
+});
   } catch (err) {
     res.status(500).json({ error: "Fetching organization failed", details: err.message });
   }

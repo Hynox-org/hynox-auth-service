@@ -15,7 +15,7 @@ router.post("/signup", async (req, res) => {
   try {
     const { fullName, email, password, countryCode, phoneNumber, role = "super_admin" } = req.body;
 
-    if (!fullName || !email || !password ) {
+    if (!fullName || !email || !password) {
       return res.status(400).json({ message: "All required fields must be provided" });
     }
 
@@ -32,9 +32,8 @@ router.post("/signup", async (req, res) => {
       return res.status(400).json({ supabaseError: supabaseError.message });
     }
 
-    // ✅ Get the correct Supabase user ID
     const supabaseUserId = supabaseData.user?.id;
-    if (!supabaseUserId || supabaseUserId === "") {
+    if (!supabaseUserId) {
       return res.status(400).json({ error: "Failed to retrieve Supabase user ID" });
     }
 
@@ -43,7 +42,7 @@ router.post("/signup", async (req, res) => {
 
     // 3️⃣ Store user in MongoDB
     const newUser = new User({
-      userId: supabaseUserId, // ✅ Store Supabase user ID here
+      userId: supabaseUserId,
       fullName,
       email,
       password: hashedPassword,
@@ -54,9 +53,26 @@ router.post("/signup", async (req, res) => {
 
     await newUser.save();
 
+    // 4️⃣ Immediately sign in to get access token (Supabase doesn’t auto-return session on signup)
+    const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (loginError) {
+      console.error("Signup loginError:", loginError.message);
+      return res.status(201).json({
+        message: "User registered successfully, but failed to auto-login",
+        user: newUser,
+      });
+    }
+
     res.status(201).json({
-      message: "User registered successfully",
-      user: newUser,
+      message: "Signup successful",
+      Id: userId,
+      role: role,
+      accessToken: loginData.session.access_token,
+      expiresIn: loginData.session.expires_in,
     });
   } catch (err) {
     console.error(err);
@@ -78,38 +94,31 @@ router.post("/login", async (req, res) => {
       password,
     });
 
-    // console.log("Supabase login response:", supabaseData, supabaseError);
-
     if (supabaseError)
       return res.status(400).json({ supabaseError: supabaseError.message });
 
-    // ✅ Check if Supabase returned a user
     const supabaseUserId = supabaseData?.user?.id || supabaseData?.session?.user?.id;
-    // console.log("Supabase user ID:", supabaseUserId);
-    if (!supabaseUserId || supabaseUserId === "") {
+    if (!supabaseUserId) {
       return res.status(400).json({ message: "Login failed — no user ID returned from Supabase" });
     }
 
-    // 2️⃣ Fetch corresponding MongoDB profile
+    // 2️⃣ Fetch MongoDB profile
     const user = await User.findOne({ userId: supabaseUserId });
-    console.log("Fetched user from MongoDB:", user);
-    if (user=="" || user==null)
-      return res.status(404).json({ message: "User not fetched" });
+    if (!user) return res.status(404).json({ message: "User not found in MongoDB" });
 
-    if (!user)
-      return res.status(404).json({ message: "User not found in MongoDB" });
-
+    // ✅ Return access token & session info
     res.json({
       message: "Login successful",
-      user,
-      session: supabaseData.session,
+      userId: user.userId,
+      role: user.role,
+      accessToken: supabaseData.session.access_token,
+      expiresIn: supabaseData.session.expires_in,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Login failed", details: err.message });
   }
 });
-
 
 // ----------------- Update Profile -----------------
 router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
@@ -121,14 +130,13 @@ router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    const { fullName, email, phone, countryCode, country, state, language, profilePicUrl } = req.body;
+    const { fullName, phone, countryCode, country, state, language, profilePicUrl } = req.body;
 
     // Update in MongoDB
     const user = await User.findOne({ userId });
     if (!user) return res.status(404).json({ error: "User not found" });
 
     if (fullName) user.fullName = fullName;
-    if (email) user.email = email;
     if (phone) user.phone = phone;
     if (countryCode) user.countryCode = countryCode;
     if (country) user.country = country;
@@ -138,13 +146,11 @@ router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
 
     await user.save();
 
-    // Optional: update Supabase metadata as well
     await supabase.auth.admin.updateUserById(userId, {
-      email,
       user_metadata: { role: user.role },
     });
 
-    res.status(200).json({ message: "Profile updated successfully", user });
+    res.status(200).json({ message: "Profile updated successfully", userId: user.userId, role: user.role , accessToken: req.user.accessToken, expiresIn: req.user.expiresIn });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Profile update failed", details: err.message });
