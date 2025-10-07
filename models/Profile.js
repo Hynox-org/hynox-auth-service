@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema({
       return generateProfilePic(this.fullName);
     },
   },
-  role: { type: String, enum: ["employee", "manager", "super_admin"], default: "super_admin" },
+  role: { type: String, default: "super_admin" },
   orgId: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },
 });

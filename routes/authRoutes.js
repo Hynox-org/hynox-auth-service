@@ -39,6 +39,7 @@ router.post("/signup", async (req, res) => {
 
     // 2️⃣ Hash password before saving in MongoDB
     const hashedPassword = await bcrypt.hash(password, 10);
+    if (phoneNumber) phone = phoneNumber;
 
     // 3️⃣ Store user in MongoDB
     const newUser = new User({
@@ -47,7 +48,7 @@ router.post("/signup", async (req, res) => {
       email,
       password: hashedPassword,
       countryCode,
-      phone: phoneNumber,
+      phone,
       role,
     });
 
@@ -70,7 +71,6 @@ router.post("/signup", async (req, res) => {
     res.status(201).json({
       message: "Signup successful",
       Id: userId,
-      role: role,
       accessToken: loginData.session.access_token,
       expiresIn: loginData.session.expires_in,
     });
@@ -110,7 +110,6 @@ router.post("/login", async (req, res) => {
     res.json({
       message: "Login successful",
       userId: user.userId,
-      role: user.role,
       accessToken: supabaseData.session.access_token,
       expiresIn: supabaseData.session.expires_in,
     });
@@ -150,7 +149,12 @@ router.put("/update-profile/:userId", supabaseAuth, async (req, res) => {
       user_metadata: { role: user.role },
     });
 
-    res.status(200).json({ message: "Profile updated successfully", userId: user.userId, role: user.role , accessToken: req.user.accessToken, expiresIn: req.user.expiresIn });
+    res.status(200).json({ 
+      message: "Profile updated successfully", 
+      userId: user.userId,
+      accessToken: req.user.accessToken, 
+      expiresIn: req.user.expiresIn 
+  });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Profile update failed", details: err.message });

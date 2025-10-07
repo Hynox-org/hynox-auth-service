@@ -25,12 +25,12 @@ router.post("/setup", supabaseAuth, async (req, res) => {
     }
 
     const orgId = uuidv4();
-    const newOrg = new Organization({ orgId, orgName, roles: ["super_admin"], empCount: 20 });
+    const newOrg = new Organization({ orgId, orgName, roles:validRoles, empCount: 20 });
     await newOrg.save();
 
     const updatedUser = await Profile.findOneAndUpdate(
       { userId },
-      { orgId, role: "super_admin" },
+      { orgId },
       { new: true }
     );
 
@@ -91,8 +91,6 @@ router.post("/assign-user", supabaseAuth, async (req, res) => {
 
     res.status(201).json({
       message: "User created and assigned to organization successfully",
-      user: userId,
-      organization: orgId,
     });
   } catch (err) {
     console.error("❌ Assign user failed:", err);
@@ -101,27 +99,33 @@ router.post("/assign-user", supabaseAuth, async (req, res) => {
 });
 
 // ----------------- Edit Organization Details (Super Admin Only) -----------------
-router.put("/:orgId", supabaseAuth, async (req, res) => { //supabaseAuth(["super_admin" , " admin "])
+router.put("/:orgId", supabaseAuth, async (req, res) => {//supabaseAuth(["super_admin" , " admin "])
   try {
     const { orgId } = req.params;
     const { orgName, roles } = req.body;
 
     const adminUser = await Profile.findOne({ userId: req.user.userId });
-    if (!adminUser || adminUser.role !== "super_admin") 
+    if (!adminUser || adminUser.role !== "super_admin")
       return res.status(403).json({ error: "Only super_admin can update organization" });
 
     const org = await Organization.findOne({ orgId });
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
     if (orgName) org.orgName = orgName;
-    if (roles && roles.length) org.roles = roles;
+
+    // ✅ Merge or replace roles if provided
+    if (roles && roles.length) {
+      const mergedRoles = [...new Set([...org.roles, ...roles])]; // remove duplicates
+      org.roles = mergedRoles;
+    }
 
     await org.save();
-    res.status(200).json({ message: "Organization updated successfully", organization: orgId });
+    res.status(200).json({ message: "Organization updated successfully" });
   } catch (err) {
     res.status(500).json({ error: "Updating organization failed", details: err.message });
   }
 });
+
 
 // ----------------- Get Organization Details (Public) -----------------
 router.get("/:orgId", async (req, res) => {
@@ -132,16 +136,16 @@ router.get("/:orgId", async (req, res) => {
     if (!org) return res.status(404).json({ error: "Organization not found" });
 
     const users = await Profile.find({ orgId });
-res.status(200).json({
-  organization: org.orgName,
-  users: users.map((user) => ({
-    fullName: user.fullName,
-    email: user.email,
-    role: user.role,
-  })),
-});
+    res.status(200).json({
+        organization: org.orgName,
+        users: users.map((user) => ({
+            fullName: user.fullName,
+            email: user.email,
+            role: user.role,
+        })),
+    });
   } catch (err) {
-    res.status(500).json({ error: "Fetching organization failed", details: err.message });
+        res.status(500).json({ error: "Fetching organization failed", details: err.message });
   }
 });
 
