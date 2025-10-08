@@ -18,7 +18,6 @@ app.use(express.json());
     // credentials: true,
 //   })
 // );
-
 // ------------------- DATABASE CONNECTION -------------------
 mongoose
   .connect(process.env.MONGO_URI, {
@@ -28,8 +27,8 @@ mongoose
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
 // ------------------- ROUTES -------------------
-app.use("/api/auth", authRoutes);
-app.use("/api/org", orgRoutes);
+app.use("/identity/api/auth", authRoutes);
+app.use("/identity/api/org", orgRoutes);
 
 // ------------------- DEFAULT ROUTE -------------------
 app.get("/", (req, res) => {
