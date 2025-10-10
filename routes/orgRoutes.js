@@ -35,12 +35,13 @@ router.post("/setup", roleAuth(["super_admin"]), async (req, res) => {
 
     // 🔗 Dynamically connect to corresponding service DB
     const { getServiceDB } = require("../dbConnections");
-    const serviceDB = await getServiceDB(serviceName);
+    const serviceConn = await getServiceDB(serviceName);
 
-    // 🧭 Fetch Free planId from that service DB’s subscription collection
-    const freePlan = await serviceDB.db
-      .collection("subscription")
+    // ✅ Always use `serviceConn.db`
+    const freePlan = await serviceConn.db
+      .collection("subscriptions")
       .findOne({ planName: "Free" });
+
     if (!freePlan) {
       return res
         .status(404)

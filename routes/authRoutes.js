@@ -110,6 +110,27 @@ router.post("/login", async (req, res) => {
     if (!user)
       return res.status(404).json({ message: "User not found in MongoDB" });
 
+     const user_org = await User.findOne({ userId: supabaseUserId });
+    if (!user)
+      return res.status(404).json({ message: "User not found in MongoDB" });
+
+    // 🧩 New condition: Check if orgId exists
+    if (!user_org.orgId) {
+      if (user_org.role === "super_admin") {
+        return res.status(200).json({
+          message: "Organization setup required",
+          action: "CREATE_ORG",
+          userId: user.userId,
+          role: user.role,
+          accessToken: supabaseData.session?.access_token,
+        });
+      } else {
+        return res.status(403).json({
+          message: "Unauthorized: No organization linked",
+          action: "UNAUTHORIZED_USER",
+        });
+      }
+    }
     // 3️⃣ Get organization using orgId in user (UUID safe)
     let org = null;
     if (user.orgId) {
@@ -126,11 +147,11 @@ router.post("/login", async (req, res) => {
       if (!serviceExists) {
         try {
           const { getServiceDB } = require("../dbConnections");
-          const serviceDB = await getServiceDB(serviceName);
+          const serviceConn = await getServiceDB(serviceName);
 
-          // Fetch Free plan from service DB
-          const freePlan = await serviceDB.db
-            .collection("subscription")
+          // ✅ Always access `serviceConn.db`
+          const freePlan = await serviceConn.db
+            .collection("subscriptions")
             .findOne({ planName: "Free" });
 
           if (!freePlan) {
