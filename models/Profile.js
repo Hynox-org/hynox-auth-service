@@ -21,7 +21,6 @@ const userSchema = new mongoose.Schema({
   countryCode: { type: String, default: "" },
   country: { type: String, default: "" },
   state: { type: String, default: "" },
-  language: { type: String, default: "" },
   profilePic: {
     type: Object,
     default: function () {

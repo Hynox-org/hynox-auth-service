@@ -17,37 +17,59 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 // ----------------- Setup Org (Super Admin Only) -----------------
 router.post("/setup", roleAuth(["super_admin"]), async (req, res) => {
   try {
-    const { userId, orgName, empCount, serviceName, planId } = req.body;
+    const { orgName, empCount, serviceName } = req.body;
+    const { id: userId, role } = req.user; // ✅ Extract userId and role from middleware
 
     // Validate required fields
-    if (!userId || !orgName) {
-      return res.status(400).json({ error: "userId and orgName are required" });
+    if (!orgName || !serviceName) {
+      return res
+        .status(400)
+        .json({ error: "orgName and serviceName are required" });
     }
 
     // 🔍 Check if organization name already exists
     const existingOrg = await Organization.findOne({ orgName: orgName.trim() });
     if (existingOrg) {
-      return res.status(400).json({
-        error: "Organization name already exists.",
-      });
+      return res.status(400).json({ error: "Organization name already exists." });
     }
 
-    // Generate unique orgId
+    // 🔗 Dynamically connect to corresponding service DB
+    const { getServiceDB } = require("../dbConnections");
+    const serviceDB = await getServiceDB(serviceName);
+
+    // 🧭 Fetch Free planId from that service DB’s subscription collection
+    const freePlan = await serviceDB.db
+      .collection("subscription")
+      .findOne({ planName: "Free" });
+    if (!freePlan) {
+      return res
+        .status(404)
+        .json({ error: `Free plan not found in ${serviceName} DB` });
+    }
+
+    const planId = freePlan.planId || freePlan._id?.toString();
+    if (!planId) {
+      return res
+        .status(500)
+        .json({ error: "Plan ID missing in subscription document" });
+    }
+
+    // 🆔 Generate unique orgId
     const orgId = uuidv4();
 
-    // Create new organization
+    // 🏢 Create new organization
     const newOrg = new Organization({
       orgId,
       orgName: orgName.trim(),
+      userId, // ✅ user who created the org
       empCount: empCount || 20,
       employees: [userId],
-      userId, // store super_admin userId (org creator)
-      orgServices: serviceName && planId ? [[serviceName, planId]] : []
+      orgServices: [{ serviceName, planId }], // ✅ store as object
     });
 
     await newOrg.save();
 
-    // Update user's orgId in Profile collection
+    // 👤 Update user's orgId in Profile collection
     const updatedUser = await Profile.findOneAndUpdate(
       { userId },
       { orgId },
@@ -58,7 +80,7 @@ router.post("/setup", roleAuth(["super_admin"]), async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // Success response
+    // ✅ Success response
     res.status(201).json({
       message: "Organization created and linked successfully",
       organization: {
@@ -69,9 +91,9 @@ router.post("/setup", roleAuth(["super_admin"]), async (req, res) => {
       user: {
         userId: updatedUser.userId,
         fullName: updatedUser.fullName,
+        role,
       },
     });
-
   } catch (err) {
     console.error("Organization setup failed:", err);
     res.status(500).json({
@@ -84,7 +106,8 @@ router.post("/setup", roleAuth(["super_admin"]), async (req, res) => {
 // ----------------- Assign New User Under Org (Super Admin Only) -----------------
 router.post("/assign-user", roleAuth(["super_admin"]), async (req, res) => {
   try {
-    const { fullName, email, password, countryCode, phoneNumber, role, orgId } = req.body;
+    const { fullName, email, password, countryCode, phoneNumber, orgId } = req.body;
+        const { role } = req.user; // ✅ Extract userId and role from middleware
 
     // Create user in Supabase
     const { data: supabaseData, error: supabaseError } =

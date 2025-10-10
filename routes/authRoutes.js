@@ -83,10 +83,11 @@ router.post("/signup", async (req, res) => {
     res.status(500).json({ error: "Internal server error", details: error.message });
   }
 });
+
 // ----------------- Login (Public) -----------------
 router.post("/login", async (req, res) => {
   try {
-    const { email, password, serviceName, freePlanId } = req.body;
+    const { email, password, serviceName } = req.body;
 
     if (!email || !password)
       return res.status(400).json({ message: "Email and password required" });
@@ -100,7 +101,9 @@ router.post("/login", async (req, res) => {
 
     const supabaseUserId = supabaseData.user?.id;
     if (!supabaseUserId)
-      return res.status(400).json({ message: "Login failed — no user ID returned" });
+      return res
+        .status(400)
+        .json({ message: "Login failed — no user ID returned" });
 
     // 2️⃣ Fetch user profile
     const user = await User.findOne({ userId: supabaseUserId });
@@ -110,18 +113,36 @@ router.post("/login", async (req, res) => {
     // 3️⃣ Get organization using orgId in user (UUID safe)
     let org = null;
     if (user.orgId) {
-      org = await Organization.findOne({ orgId: user.orgId }); // ✅ use findOne for UUID
+      org = await Organization.findOne({ orgId: user.orgId });
     }
 
     // 4️⃣ If org found, check service entry
-    if (org) {
+    if (org && serviceName) {
       const serviceExists = org.orgServices.some(
-        ([sName]) => sName === serviceName
+        (s) => s.serviceName === serviceName
       );
 
+      // 🧭 If service not linked, fetch Free planId dynamically
       if (!serviceExists) {
-        org.orgServices.push([serviceName, freePlanId]);
-        await org.save();
+        try {
+          const { getServiceDB } = require("../dbConnections");
+          const serviceDB = await getServiceDB(serviceName);
+
+          // Fetch Free plan from service DB
+          const freePlan = await serviceDB.db
+            .collection("subscription")
+            .findOne({ planName: "Free" });
+
+          if (!freePlan) {
+            console.warn(`No 'Free' plan found in ${serviceName} DB.`);
+          } else {
+            const planId = freePlan.planId || freePlan._id?.toString();
+            org.orgServices.push({ serviceName, planId });
+            await org.save();
+          }
+        } catch (dbErr) {
+          console.error(`Error fetching Free plan for ${serviceName}:`, dbErr);
+        }
       }
     }
 
@@ -133,9 +154,8 @@ router.post("/login", async (req, res) => {
       accessToken: supabaseData.session?.access_token,
       expiresIn: supabaseData.session?.expires_in,
       organization: org?.orgId || null,
-      service: serviceName,
+      service: serviceName || null,
     });
-
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Login failed", details: err.message });
