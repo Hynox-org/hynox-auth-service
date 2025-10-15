@@ -1,4 +1,4 @@
-// utils/dbConnections.js
+// /dbConnections.js
 const mongoose = require("mongoose");
 
 const connections = {}; // cache for multiple service connections
@@ -19,7 +19,7 @@ async function getServiceDB(serviceName) {
   const uri = DB_URIS[serviceName];
   const dbName = DB_NAMES[serviceName];
 
-  console.log(`🧩 Connecting to service: ${serviceName}`);
+  console.log(` Connecting to service: ${serviceName}`);
   console.log(`URI: ${uri}`);
   console.log(`DB Name: ${dbName}`);
 
@@ -28,8 +28,8 @@ async function getServiceDB(serviceName) {
 
   // Reuse existing connection if already established
   if (connections[serviceName]) {
-    console.log(`🔁 Reusing existing connection for "${serviceName}"`);
-    return connections[serviceName];
+    console.log(` Reusing existing connection for "${serviceName}"`);
+    return connections[serviceName];     
   }
 
   // Create new connection and wait for it to open
