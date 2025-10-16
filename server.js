@@ -19,8 +19,7 @@ app.use(express.json());
 //   })
 // );
 // ------------------- DATABASE CONNECTION -------------------
-mongoose
-  .connect(process.env.MONGO_URI, {
+mongoose.connect(process.env.MONGO_URI, {
     dbName: "hynox-auth",
   })
   .then(() => console.log("✅ MongoDB connected to hynox-auth"))
