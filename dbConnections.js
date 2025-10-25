@@ -1,15 +1,13 @@
 // /dbConnections.js
 const mongoose = require("mongoose");
 
-const connections = {}; // cache for multiple service connections
-
 // Define URIs for each service
 const DB_URIS = {
   crm: process.env.CRM_DB_URI,
   // add more services if needed
 };
 
-// Define DB names for each service (same key as above)
+// Define DB names for each service
 const DB_NAMES = {
   crm: process.env.CRM_DB_NAME,
   // add more services if needed
@@ -26,19 +24,12 @@ async function getServiceDB(serviceName) {
   if (!uri) throw new Error(`No DB URI configured for service: ${serviceName}`);
   if (!dbName) throw new Error(`No DB name configured for service: ${serviceName}`);
 
-  // Reuse existing connection if already established
-  if (connections[serviceName]) {
-    console.log(` Reusing existing connection for "${serviceName}"`);
-    return connections[serviceName];     
-  }
-
-  // Create new connection and wait for it to open
+  // ✅ Always create a new connection
   const conn = mongoose.createConnection(uri, { dbName });
 
   return new Promise((resolve, reject) => {
     conn.once("open", () => {
       console.log(`✅ Connected to service "${serviceName}" → DB: ${dbName}`);
-      connections[serviceName] = conn;
       resolve(conn);
     });
 

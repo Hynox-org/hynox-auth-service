@@ -19,18 +19,38 @@ router.post("/signup", async (req, res) => {
       role = "super_admin",
     } = req.body;
 
-    if (!fullName || !email || !password || !userId) {
-      return res
-        .status(400)
-        .json({ error: "Full name, email, and password are required" });
+    // ✅ Validate essential fields (password is optional)
+    if (!fullName || !email || !userId) {
+      return res.status(400).json({
+        error: "Full name, email, and userId are required",
+      });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ error: "User already exists" });
+    // ✅ Check if user already exists
+      const existingUser = await User.findOne({ $or: [{ email }, { userId }] });
+      if (existingUser) {
+        if (existingUser.orgId === null) {
+          return res.status(200).json({
+            message: "User already exists",
+            userId: existingUser.userId,
+            role: existingUser.role,
+            action: "CREATE_ORG",
+          });
+        }
+        return res.status(200).json({
+          message: "User already exists",
+          userId: existingUser.userId,
+          role: existingUser.role,
+          action: "EVERUTHING DONE",
+        });
+      }
+let hashedPassword = null;
+if (password) {
+  hashedPassword = await bcrypt.hash(password, 10);
+}
 
-    const hashedPassword = await bcrypt.hash(password, 10);
 
+    // ✅ Create new user document
     const newUser = new User({
       userId,
       fullName,
@@ -43,9 +63,11 @@ router.post("/signup", async (req, res) => {
 
     await newUser.save();
 
+    // ✅ Response
     res.status(201).json({
       message: "Signup successful",
       user: { id: userId },
+      action: "CREATE_ORG",
       serviceDetails: {
         serviceName: serviceName || "default",
         planId: planId || null,
@@ -54,9 +76,10 @@ router.post("/signup", async (req, res) => {
     });
   } catch (error) {
     console.error("Signup Error:", error);
-    res
-      .status(500)
-      .json({ error: "Internal server error", details: error.message });
+    res.status(500).json({
+      error: "Internal server error",
+      details: error.message,
+    });
   }
 });
 
@@ -165,5 +188,27 @@ router.put("/update/:userId", async (req, res) => {
     res.status(500).json({ error: "Profile update failed", details: err.message });
   }
 });
+
+//-------------------- Get User by Supabase UID ----------------------    
+router.get("/user/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log("🔍 Fetching user with Supabase UID:", id);
+
+    const user = await User.findOne({ userId: id }).select("userId fullName email role");
+
+    if (!user) {
+      console.error("❌ User not found in DB");
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("🔥 Auth-Service Error:", error.message);
+    res.status(500).json({ message: "Error fetching user", details: error.message });
+  }
+});
+
+
 
 module.exports = router;
