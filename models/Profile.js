@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Organization = require("./Organization");
 
 // Helper function to generate profile pic (first letter + random color)
 function generateProfilePic(fullName) {
@@ -27,6 +28,12 @@ const userSchema = new mongoose.Schema({
       return generateProfilePic(this.fullName);
     },
   },
+  // Organization: [
+  //   {
+  //     role: { type: String, },
+  //     orgId: { type: String, default: null },
+  //   }
+  // ],
   role: { type: String, default: "super_admin" },
   orgId: { type: String, default: null },
   createdAt: { type: Date, default: Date.now },

@@ -34,6 +34,7 @@ router.post("/signup", async (req, res) => {
             message: "User already exists",
             userId: existingUser.userId,
             role: existingUser.role,
+            orgId: existingUser.orgId,
             action: "CREATE_ORG",
           });
         }
@@ -41,14 +42,14 @@ router.post("/signup", async (req, res) => {
           message: "User already exists",
           userId: existingUser.userId,
           role: existingUser.role,
-          action: "EVERUTHING DONE",
+          orgId: existingUser.orgId,
+          action: "DASHBOARD",
         });
       }
-let hashedPassword = null;
-if (password) {
-  hashedPassword = await bcrypt.hash(password, 10);
-}
-
+      let hashedPassword = null;
+      if (password) {
+        hashedPassword = await bcrypt.hash(password, 10);
+        }
 
     // ✅ Create new user document
     const newUser = new User({
@@ -68,6 +69,7 @@ if (password) {
       message: "Signup successful",
       user: { id: userId },
       action: "CREATE_ORG",
+      orgId: null,
       serviceDetails: {
         serviceName: serviceName || "default",
         planId: planId || null,
@@ -146,10 +148,9 @@ router.post("/login", async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       user: { userId: user.userId, role: user.role },
-      org: {
-        organization: org.orgId ,
-        service: serviceName,
-      },
+      orgId: org.orgId ,
+      service: serviceName,
+      
     });
   } catch (err) {
     console.error("Login error:", err);
@@ -189,13 +190,23 @@ router.put("/update/:userId", async (req, res) => {
   }
 });
 
+//-------------------- Get User ----------------------    
+router.get("/users", async (req, res) => {
+  try {
+    const users = await User.find().select("userId fullName email role orgId");
+    res.status(200).json(users);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching users", details: error.message });
+  }
+});
+
 //-------------------- Get User by Supabase UID ----------------------    
 router.get("/user/:id", async (req, res) => {
   try {
     const { id } = req.params;
     console.log("🔍 Fetching user with Supabase UID:", id);
 
-    const user = await User.findOne({ userId: id }).select("userId fullName email role");
+    const user = await User.findOne({ userId: id }).select("userId fullName email role orgId");
 
     if (!user) {
       console.error("❌ User not found in DB");
@@ -208,6 +219,26 @@ router.get("/user/:id", async (req, res) => {
     res.status(500).json({ message: "Error fetching user", details: error.message });
   }
 });
+
+//-------------------- Set Password ----------------------
+router.put("/setpassword" , async (req,res)=>{
+try{
+  const userId = req.headers["x-user-id"];
+  const { password , email} = req.body;
+  const user = await User.findOne({ userId: userId});
+
+  if(!user) return res.status(404).json({ error: "User not found" });
+  if(user.email===email){
+    const haspassword = await bcrypt.hash(password ,10);
+    user.password = haspassword;
+    await user.save();
+    res.status(200).json({ message: "Password set successfully" });
+  }
+}catch(err){
+  console.error("Error setting password:", err);
+  res.status(500).json({ error: "Error setting password", details: err.message });
+}
+})
 
 
 
